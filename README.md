@@ -1,6 +1,6 @@
 # Autonomous Truck Simulator 2017
 
-starting point: https://threejs.org/examples/webgl\_geometry\_terrain\_fog.html
+starting point: https://threejs.org/examples/webgl_geometry_terrain_fog.html
 
 run `python -m SimpleHTTPServer`
 
