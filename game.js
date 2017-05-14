@@ -1,20 +1,28 @@
-if ( ! Detector.webgl ) {
+/* TODO
+- start with camera pointed straight up, as if daydreaming
+- play with noise parameters
+- dotted line in middle of road?
+- water?
+*/
 
+if (!Detector.webgl) {
   Detector.addGetWebGLMessage();
   document.getElementById( 'container' ).innerHTML = "";
-
 }
 
 var container, stats;
 
 var camera, controls, scene, renderer;
 
-var mesh, texture;
+var mesh, texture, truck;
 
 var worldWidth = 256, worldDepth = 256,
 worldHalfWidth = worldWidth / 2, worldHalfDepth = worldDepth / 2;
 
 var clock = new THREE.Clock();
+
+var inner_road = 92;
+var outer_road = 100;
 
 init();
 animate();
@@ -24,20 +32,68 @@ function init() {
   container = document.getElementById( 'container' );
 
   camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 10000 );
-
-  controls = new THREE.FirstPersonControls( camera );
-  controls.movementSpeed = 150;
+  //camera.lookAt(new THREE.Vector3(0, 10, 0));
+  
+  controls = new THREE.FirstPersonControls(camera);
+  controls.movementSpeed = 0;
   controls.lookSpeed = 0.1;
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2( 0xefd1b5, 0.0025 );
+  //scene.fog = new THREE.FogExp2(0xefd1b5, 0.0025);
+  scene.fog = new THREE.FogExp2(0xefd1b5, 0.00125);
 
   data = generateHeight(worldWidth, worldDepth);
+  data = makeRingRoad(worldWidth, worldDepth, inner_road, outer_road, data);
 
-  camera.position.y = data[ worldHalfWidth + worldHalfDepth * worldWidth ] * 10 + 500;
+  camera.position.y = data[ worldHalfWidth + worldHalfDepth * worldWidth ] * 10 + 50;
+  // what's mapping from texture to mesh?
+  camera.position.z = 2828;
 
+  // model
+  var manager = new THREE.LoadingManager();
+  manager.onProgress = function ( item, loaded, total ) {
+    console.log( item, loaded, total );
+  };
+  var onProgress = function (xhr) {
+    if (xhr.lengthComputable) {
+      var percentComplete = xhr.loaded / xhr.total * 100;
+      console.log( Math.round(percentComplete, 2) + '% downloaded' );
+    }
+  };  
+  var onError = function (xhr) {};
+
+
+  var loader = new THREE.OBJLoader(manager);
+  loader.load('http://localhost:8000/autonomous-truck-simulator-2017/truck.obj', function (object) {
+    object.traverse( function ( child ) {
+      // if ( child instanceof THREE.Mesh ) {
+      //   child.material.map = texture;
+      // }
+    });
+
+
+    truck = object;
+    
+    object.position.x = camera.position.x + 3;
+    object.position.z = camera.position.z;
+    object.position.y = camera.position.y - 10;
+
+    object.rotation.y = -Math.PI / 2;
+
+    scene.add(object);
+
+    var light = new THREE.PointLight(0xff0000, 1, 100);
+    light.position.x = object.position.x - 1;
+    light.position.y = object.position.y + 3;
+    light.position.z = object.position.z;
+    light.position.y += 3;
+    scene.add(light);
+  }, onProgress, onError );
+
+
+  
   var geometry = new THREE.PlaneBufferGeometry( 7500, 7500, worldWidth - 1, worldDepth - 1 );
-  geometry.rotateX( - Math.PI / 2 );
+  geometry.rotateX(-Math.PI / 2);
 
   var vertices = geometry.attributes.position.array;
 
@@ -81,32 +137,37 @@ function onWindowResize() {
 }
 
 function generateHeight(width, height) {
-  var size = width * height, data = new Uint8Array(size),
+  let size = width * height, data = new Uint8Array(size),
   perlin = new ImprovedNoise(), quality = 1,
   z = Math.random() * 100;
 
+  for (var j = 0; j < 4; j++) {
+  //for (var j = 0; j < 6; j++) {
+    for (var i = 0; i < size; i++) {
+      let x = i % width, y = ~~ (i / width);
+      //data[i] += Math.abs(perlin.noise(x / quality, y / quality, z) * quality * .5);
+      //data[i] += Math.abs(perlin.noise(x / quality, y / quality, z) * quality * 1.75);
+      data[i] += Math.abs(perlin.noise(x / quality, y / quality, z) * quality);
+    }
+    quality *= 5;
+  }
+
+  return data;
+}
+
+
+function makeRingRoad(width, height, inner_radius, outer_radius, data) {
+  let size = width * height;
   let half_height = height / 2, half_width = width / 2;
-
-
-  // would like if looked like flat road with hills going up and down
-  // but also kinda like chasm look
-  // also maybe cool to add water
-
+  
   for (var j = 0; j < 4; j++) {
     for (var i = 0; i < size; i++) {
       var x = i % width, y = ~~ (i / width);
-
       let radius = Math.sqrt(Math.pow(x - half_width, 2) + Math.pow(y - half_height, 2));
-      //if (radius > 5 && radius < 10) {
-      if (radius > 5 && radius < 10) {
-        data[i] = 0;
-        //data[i] = z;
-      } else {
-        //data[i] += Math.abs(perlin.noise(x / quality, y / quality, z) * quality * 1.75);
-        data[i] += perlin.noise(x / quality, y / quality, z) * quality * 1.75;
-      }
+      if (radius >= inner_radius && radius <= outer_radius) {
+        data[i] = data[half_width + half_height * width];
+      } 
     }
-    quality *= 5;
   }
 
   return data;
@@ -178,10 +239,7 @@ function generateTexture( data, width, height ) {
 //
 
 function animate() {
-  mesh.rotation.y += 0.005;
-
-  // think this is a good start! just increase the radius and set the mesh
-
+  mesh.rotation.y -= 0.0025;
 
   requestAnimationFrame(animate);
   render();
